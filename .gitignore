@@ -1,0 +1,26 @@
+__pycache__/
+.pytest_cache/
+.venv/
+build/
+dist/
+*.spec
+*.log
+.test-deps/
+release-assets/
+github-upload/
+*.py[cod]
+*.egg-info/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+# Never commit real vaults, keys, or temporary plaintext staging.
+*.vault
+*.key
+*.pem
+*.pfx
+*.p12
+.vault-*/

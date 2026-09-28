@@ -1,0 +1,78 @@
+name: Build desktop apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Build and package
+        run: python scripts/build_release.py
+      - name: Save app and checksum
+        uses: actions/upload-artifact@v6
+        with:
+          name: Vault-${{ runner.os }}-${{ runner.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: Vault-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create or update a draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check ./*.sha256
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            python -c 'import json; assert json.load(open("release-state.json"))["isDraft"], "Refusing to change an already published release"'
+            gh release upload "$RELEASE_TAG" ./*.zip ./*.tar.gz ./*.sha256 --clobber
+          else
+            gh release create "$RELEASE_TAG" ./*.zip ./*.tar.gz ./*.sha256 \
+              --verify-tag --draft --title "Vault $RELEASE_TAG" \
+              --notes "Download the archive matching your operating system and architecture, extract it, and open Vault. No Python installation is needed. Builds are unsigned. Windows may show SmartScreen and macOS may require approval in Privacy & Security. Linux builds target Ubuntu 22.04 or newer compatible systems. SHA-256 checksums are attached. Maintainer: test the downloaded apps on their target systems before publishing this draft."
+          fi
