@@ -38,7 +38,7 @@ jobs:
       - name: Build and package
         run: python scripts/build_release.py
       - name: Save app and checksum
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Vault-${{ runner.os }}-${{ runner.arch }}
           path: release-assets/*
